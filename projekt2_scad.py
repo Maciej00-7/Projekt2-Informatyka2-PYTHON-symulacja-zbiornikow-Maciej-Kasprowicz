@@ -88,7 +88,7 @@ class Zbiornik:
 class SymulacjaKaskady(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Kaskada: Dol-> Gora")
+        self.setWindowTitle("Symulacja Kaskady Zbiorników")
         self.setFixedSize(1100, 700)
         self.setStyleSheet("background-color: #222;")
 
@@ -138,9 +138,16 @@ class SymulacjaKaskady(QWidget):
     def setup_interfejs(self):
         # 1. Główny przycisk Start/Stop
         self.btn_start = QPushButton("Start / Stop", self)
-        self.btn_start.setGeometry(50, 550, 100, 40)
+        self.btn_start.setGeometry(50, 540, 100, 40)
         self.btn_start.setStyleSheet("background-color: #444; color: white; font-weight: bold;")
         self.btn_start.clicked.connect(self.przelacz_symulacje)
+
+        #3. Przycisk reset
+        self.btn_reset = QPushButton("Resetuj", self)
+        self.btn_reset.setGeometry(50, 600, 100, 40)
+        self.btn_reset.setStyleSheet("background-color: #444; color: white; font-weight: bold;")
+        self.btn_reset.clicked.connect(self.resetuj_zbiornik)
+
 
         # 2. Generowanie paneli sterowania dla każdego zbiornika
         for i, zbiornik in enumerate(self.zbiorniki):
@@ -193,6 +200,13 @@ class SymulacjaKaskady(QWidget):
         if self.running: self.timer.stop()
         else: self.timer.start(20)
         self.running = not self.running
+    
+    def resetuj_zbiornik(self):
+        self.z1.aktualna_ilosc = 100.0; self.z1.aktualizuj_poziom() 
+        self.z2.aktualna_ilosc = 0.0; self.z2.aktualizuj_poziom()
+        self.z3.aktualna_ilosc = 0.0; self.z3.aktualizuj_poziom()
+        self.z4.aktualna_ilosc = 0.0; self.z4.aktualizuj_poziom()
+        self.update()
 
     def logika_przeplywu(self):
         # 1. Przepływ Z1 -> Z2
