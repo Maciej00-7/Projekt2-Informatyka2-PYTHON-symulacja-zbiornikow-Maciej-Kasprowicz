@@ -2,6 +2,7 @@ import sys
 from PyQt5.QtWidgets import QApplication, QComboBox, QWidget, QPushButton, QLabel
 from PyQt5.QtCore import Qt, QTimer, QPointF
 from PyQt5.QtGui import QPainter, QColor, QPen, QPainterPath
+import pyqtgraph as pg
 class Rura:
 
     def __init__(self, punkty, grubosc=12, kolor=Qt.gray):
@@ -35,6 +36,10 @@ class Rura:
             pen_ciecz = QPen(self.kolor_cieczy, self.grubosc- 4, Qt.SolidLine,Qt.RoundCap, Qt.RoundJoin)
             painter.setPen(pen_ciecz)
             painter.drawPath(path)
+
+
+
+        
 class Zbiornik:
     def __init__(self, x, y, width=100, height=140, nazwa=""):
         self.x = x; self.y = y
@@ -89,7 +94,7 @@ class SymulacjaKaskady(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Symulacja Kaskady Zbiorników")
-        self.setFixedSize(1100, 700)
+        self.setFixedSize(1100, 900)
         self.setStyleSheet("background-color: #222;")
 
         # Tryb zaworu (0 = Oba, 1 = Tylko Z3, 2 = Tylko Z4)
@@ -128,12 +133,59 @@ class SymulacjaKaskady(QWidget):
 
         self.rury = [self.rura1, self.rura2, self.rura3]
 
+        #konfiguracja wykresów 
+        self.setup_wykres()
+
         #Timer
         self.timer = QTimer()
         self.timer.timeout.connect(self.logika_przeplywu)
         self.running = False
         self.flow_speed = 0.8
         self.setup_interfejs()
+    def setup_wykres(self):
+
+        # 1. Tworzymy widget wykresu
+        self.graph_widget = pg.PlotWidget(self)
+        self.graph_widget.setGeometry(50, 650, 1000, 230) # Na samym dole okna
+        self.graph_widget.setBackground('#111') # Ciemne tło
+        self.graph_widget.setTitle("Poziom cieczy w czasie rzeczywistym", color="w", size="12pt")
+        self.graph_widget.showGrid(x=True, y=True, alpha=0.3)
+        self.graph_widget.setLabel('left', 'Poziom (L)', color='white')
+        self.graph_widget.setLabel('bottom', 'Czas (cykle)', color='white')
+        self.graph_widget.addLegend()
+
+        # 2. Inicjalizacja danych 
+        self.max_probek = 100
+        self.dane_z1 = [100] * self.max_probek
+        self.dane_z2 = [0] * self.max_probek
+        self.dane_z3 = [0] * self.max_probek
+        self.dane_z4 = [0] * self.max_probek
+        self.czas = list(range(self.max_probek)) 
+
+        # 3. Tworzymy linie dla każdego zbiornika
+        self.linia_z1 = self.graph_widget.plot(self.czas, self.dane_z1, pen='w', name="Z1")
+        self.linia_z2 = self.graph_widget.plot(self.czas, self.dane_z2, pen='y', name="Z2")
+        self.linia_z3 = self.graph_widget.plot(self.czas, self.dane_z3, pen={'color':'g', 'width':2} ,name="Z3 (P)")
+        self.linia_z4 = self.graph_widget.plot(self.czas, self.dane_z4, pen='r', name="Z4 (L)")
+
+    def update_wykres(self):
+        #usuwanie najstarszych danych
+        self.dane_z1 = self.dane_z1[1:]
+        self.dane_z2 = self.dane_z2[1:]
+        self.dane_z3 = self.dane_z3[1:]
+        self.dane_z4 = self.dane_z4[1:]
+
+        #dodanie nowych danych
+        self.dane_z1.append(self.z1.aktualna_ilosc)
+        self.dane_z2.append(self.z2.aktualna_ilosc)
+        self.dane_z3.append(self.z3.aktualna_ilosc)
+        self.dane_z4.append(self.z4.aktualna_ilosc)
+
+        #aktualizacja wykresu
+        self.linia_z1.setData(self.czas, self.dane_z1)
+        self.linia_z2.setData(self.czas, self.dane_z2)
+        self.linia_z3.setData(self.czas, self.dane_z3)
+        self.linia_z4.setData(self.czas, self.dane_z4)
 
     def setup_interfejs(self):
         # 1. Główny przycisk Start/Stop
@@ -141,6 +193,7 @@ class SymulacjaKaskady(QWidget):
         self.btn_start.setGeometry(50, 540, 100, 40)
         self.btn_start.setStyleSheet("background-color: #444; color: white; font-weight: bold;")
         self.btn_start.clicked.connect(self.przelacz_symulacje)
+    
 
         #3. Przycisk reset
         self.btn_reset = QPushButton("Resetuj", self)
@@ -190,9 +243,17 @@ class SymulacjaKaskady(QWidget):
             zbiornik.aktualna_ilosc = zbiornik.pojemnosc
         else:
             zbiornik.aktualna_ilosc = 0.0
+        if not pelny:
+            if zbiornik == self.z1:
+                self.rura1.ustaw_przeplyw(False)
+
+            elif zbiornik == self.z2:
+                self.rura2.ustaw_przeplyw(False)
+                self.rura3.ustaw_przeplyw(False)
         
         zbiornik.aktualizuj_poziom()
         self.update()
+        self.update_wykres()
     def zmiana_zaworu(self, index):
         self.tryb_zaworu = index
 
@@ -206,7 +267,10 @@ class SymulacjaKaskady(QWidget):
         self.z2.aktualna_ilosc = 0.0; self.z2.aktualizuj_poziom()
         self.z3.aktualna_ilosc = 0.0; self.z3.aktualizuj_poziom()
         self.z4.aktualna_ilosc = 0.0; self.z4.aktualizuj_poziom()
+        for rura in self.rury:
+            rura.ustaw_przeplyw(False)
         self.update()
+        self.update_wykres()
 
     def logika_przeplywu(self):
         # 1. Przepływ Z1 -> Z2
@@ -265,6 +329,7 @@ class SymulacjaKaskady(QWidget):
         self.rura3.ustaw_przeplyw(plynie_do_z4)
             
         self.update()
+        self.update_wykres()
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
